@@ -12,7 +12,7 @@
 // The value of the last bit of the I2C address.
 // On the SparkFun 9DoF IMU breakout the default is 1, and when the ADR jumper is closed the value becomes 0
 #define IMU_I2C_ADRESS 1
-typedef icm_20948_DMP_data_t IMUData;
+typedef icm_20948_DMP_data_t DMPData;
 
 #define COMPONENT(name, start)   \
 struct                           \
@@ -184,34 +184,54 @@ f32 ToMetersPerSecond(f32 speed)
     return speed / 3.6;
 }
 
-void ReadMeasurements(
-    const ICM_20948_I2C* const IMU, GPSClass* GPS,
-    MeasurementVector* const measurement)
+template<u32 MAX_DELAY>
+bool PollGPS(GPSClass* const gps)
 {
-    // accelerometer
-    measurement->acc.x = ToAcceleration(IMU, IMU->agmt.acc.axes.x);
-    measurement->acc.y = ToAcceleration(IMU, IMU->agmt.acc.axes.y);
-    measurement->acc.z = ToAcceleration(IMU, IMU->agmt.acc.axes.z);
-    // gyroscope
-    measurement->gyr.x = ToAngularVelocity(IMU, IMU->agmt.gyr.axes.x);
-    measurement->gyr.y = ToAngularVelocity(IMU, IMU->agmt.gyr.axes.y);
-    measurement->gyr.z = ToAngularVelocity(IMU, IMU->agmt.gyr.axes.z);
-    // magnetometer
-    measurement->mag.x = ToMagneticFieldStrength(IMU, IMU->agmt.mag.axes.x);
-    measurement->mag.y = ToMagneticFieldStrength(IMU, IMU->agmt.mag.axes.y);
-    measurement->mag.z = ToMagneticFieldStrength(IMU, IMU->agmt.mag.axes.z);
-    // gps
-    if (GPS->available())
+    const u32 start = millis();
+    bool got_gps = false;
+    do
     {
-        // read GPS values
-        measurement->speed = ToMetersPerSecond(GPS->speed());
-    } else
-    {
-        measurement->speed = 0.0;
-    }
+        got_gps = gps->available();
+    } while (((millis() - start) < MAX_DELAY) || got_gps);
+    return got_gps;
 }
 
-bool readIMU(ICM_20948_I2C* const IMU, IMUData* data)
+bool ReadMeasurements(
+    ICM_20948_I2C* const imu, GPSClass* const gps,
+    MeasurementVector* const measurement)
+{
+    // TODO(Nils): No measurement available has be handled explicitly as a "NAN"
+    // gps
+
+    measurement->speed = PollGPS<100>(gps) ? ToMetersPerSecond(gps->speed()) : 0.0f;
+    // IMU
+    bool imu_available = imu->dataReady();
+    if (imu_available)
+    {
+        imu->getAGMT();
+        // accelerometer
+        measurement->acc.x = ToAcceleration(imu, imu->agmt.acc.axes.x);
+        measurement->acc.y = ToAcceleration(imu, imu->agmt.acc.axes.y);
+        measurement->acc.z = ToAcceleration(imu, imu->agmt.acc.axes.z);
+        // gyroscope
+        measurement->gyr.x = ToAngularVelocity(imu, imu->agmt.gyr.axes.x);
+        measurement->gyr.y = ToAngularVelocity(imu, imu->agmt.gyr.axes.y);
+        measurement->gyr.z = ToAngularVelocity(imu, imu->agmt.gyr.axes.z);
+        // magnetometer
+        measurement->mag.x = ToMagneticFieldStrength(imu, imu->agmt.mag.axes.x);
+        measurement->mag.y = ToMagneticFieldStrength(imu, imu->agmt.mag.axes.y);
+        measurement->mag.z = ToMagneticFieldStrength(imu, imu->agmt.mag.axes.z);
+    }
+    else
+    {
+        measurement->acc.vec.Fill(0);
+        measurement->gyr.vec.Fill(0);
+        measurement->mag.vec.Fill(0);
+    }
+    return imu_available;
+}
+
+bool ReadDMP(ICM_20948_I2C* const IMU, DMPData* data)
 {
     bool success = false;
     IMU->readDMPdataFromFIFO(data);
@@ -224,9 +244,9 @@ bool readIMU(ICM_20948_I2C* const IMU, IMUData* data)
     return success;
 }
 
-bool extractAcceleration(
+bool ExtractAcceleration(
     const ICM_20948_I2C* const IMU,
-    const IMUData& data,
+    const DMPData& data,
     BLA::Matrix<3,1>* const acceleration)
 {
     if ((data.header & DMP_header_bitmap_Accel) > 0)
@@ -239,8 +259,8 @@ bool extractAcceleration(
     return false;
 }
 
-bool extractQuaternion(
-    const IMUData& data,
+bool ExtractQuaternion(
+    const DMPData& data,
     BLA::Matrix<4,1>* const quaternion)
 {
     if ((data.header & DMP_header_bitmap_Quat9) > 0)

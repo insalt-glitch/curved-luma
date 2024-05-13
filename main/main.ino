@@ -5,6 +5,7 @@
 #include "LinearAlgebra.h"
 
 #include "Sensors.h"
+#include "Helpers.h"
 #include "EKF_Kalman_Filter.h"
 
 #define i16 int16_t
@@ -17,12 +18,12 @@
 
 const BLA::Matrix<STATE_SIZE, STATE_SIZE, float> cov_motion_noise =
 {
-    (float)(2.0f * PI / 180.0f), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, (float)(2.0f * PI / 180.0f), 0.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, (float)(2.0f * PI / 180.0f), 0.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, (float)(2.0f * PI / 180.0f), 0.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, 0.0f,                         0.5f, 0.0f,
-    0.0f, 0.0f, 0.0f, 0.0f, 0.0f,                         1.0f,
+    2.0f * PI / 180.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 2.0f * PI / 180.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 2.0f * PI / 180.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 2.0f * PI / 180.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f,               0.5f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f, 0.0f,               1.0f,
 };
 const BLA::Matrix<7, 7, float> cov_measurement_noise =
 {
@@ -54,17 +55,15 @@ void setup() {
     // initDMP();
 
     // Wait for first measurement
-    while (!IMU.dataReady());
+    while (!ReadMeasurements(&IMU, &GPS, &measurement));
     t_last = millis();
-    IMU.getAGMT();
-    ReadMeasurements(&IMU, &GPS, &measurement);
     // compute initial state
-    mu_update.speed = 0;
+    mu_update.speed = 0.0f;
     mu_update.acceleration = BLA::Norm(measurement.acc.vec);
     // rotation state
     measurement.acc.vec /= BLA::Norm(measurement.acc.vec);
     measurement.mag.vec /= BLA::Norm(measurement.mag.vec);
-    BLA::Matrix<3,3> C =
+    const BLA::Matrix<3,3> C =
         BLA::CrossProduct(BLA::CrossProduct(measurement.acc.vec, measurement.mag.vec), measurement.acc.vec)
         || BLA::CrossProduct(measurement.acc.vec, measurement.mag.vec)
         || measurement.acc.vec;
@@ -172,13 +171,13 @@ void measurement_model(
     }
 }
 
-void loop() {
-    if (IMU.dataReady()) {
-        IMU.getAGMT();
+
+void loop()
+{
+    if (ReadMeasurements(&IMU, &GPS, &measurement)) {
         t_now = millis();
         dt = (t_now - t_last) / 1000;
         t_last = t_now;
-        ReadMeasurements(&IMU, &GPS, &measurement);
 
         Serial.print("\n\nLinear  Acceleration (m/s)  : ");
         Serial << measurement.acc.vec;
@@ -201,26 +200,9 @@ void loop() {
             mu_prediction, cov_prediction, partial_measurement, cov_measurement_noise,
             &measurement_model, &mu_update, &cov_update
         );
-        // nonLinKFupdate(xp(:,k), Pp(:,:,k), Y(:,k), h, R, type);
-        // nonLinKFprediction(xf(:,k-1), Pf(:,:,k-1), f, Q, type);
-        // TODO(Nils): Normailze quaterion
-        delay(200);
+        // Normailze quaterion
+        mu_prediction.quat.vec /= BLA::Norm(mu_prediction.quat.vec);
     }
-
-    // if (readIMU(&data)) {
-    //     BLA::Matrix<3> acceleration;
-    //     if (extractAcceleration(data, &acceleration)) {
-    //         Serial.print("Acceleration: [");
-    //         Serial.print(acceleration(0), 2);
-    //         Serial.print(" ");
-    //         Serial.print(acceleration(1), 2);
-    //         Serial.print(" ");
-    //         Serial.print(acceleration(2), 2);
-    //         Serial.print("]\n");
-    //     }
-    // }
-    // printStatusInterval();
-
     // get velocity measurement
     // define measurement function
     // define motion function
