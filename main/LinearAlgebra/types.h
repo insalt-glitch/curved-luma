@@ -1,10 +1,18 @@
 #pragma once
 
+#include <type_traits>
+
 namespace BLA
 {
 
 template <typename DerivedType, int rows, int cols, typename DType>
 struct MatrixBase;
+
+template <typename T>
+struct is_matrix_base : std::false_type {};
+
+template <typename DerivedType, int rows, int cols, typename DType>
+struct is_matrix_base<MatrixBase<DerivedType, rows, cols, DType>> : std::true_type {};
 
 template <int Rows, int Cols = 1, typename DType = float>
 class Matrix : public MatrixBase<Matrix<Rows, Cols, DType>, Rows, Cols, DType>

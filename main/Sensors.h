@@ -62,7 +62,7 @@ typedef union
 
 ICM_20948_I2C IMU; // Create an ICM_20948_I2C object
 
-void initGPS()
+void InitGPS()
 {
     if (!GPS.begin(GPS_MODE_SHIELD)) {
         Serial.println("Failed to initialize GPS!");
@@ -72,7 +72,7 @@ void initGPS()
     Serial.println("Initialized GPS successfully!");
 }
 
-void initIMU()
+void InitIMU()
 {
     Wire.begin();
     Wire.setClock(400000);
@@ -94,7 +94,7 @@ void initIMU()
     }
 }
 
-void initDMP()
+void InitDMP()
 {
     bool success = true; // Use success to show if the DMP configuration was successful
     success &= (IMU.initializeDMP() == ICM_20948_Stat_Ok);
@@ -198,11 +198,10 @@ bool PollGPS(GPSClass* const gps)
 
 bool ReadMeasurements(
     ICM_20948_I2C* const imu, GPSClass* const gps,
-    MeasurementVector* const measurement)
-{
+    MeasurementVector* const measurement, f32* const dt)
     // TODO(Nils): No measurement available has be handled explicitly as a "NAN"
+{
     // gps
-
     measurement->speed = PollGPS<100>(gps) ? ToMetersPerSecond(gps->speed()) : 0.0f;
     // IMU
     bool imu_available = imu->dataReady();
@@ -228,6 +227,11 @@ bool ReadMeasurements(
         measurement->gyr.vec.Fill(0);
         measurement->mag.vec.Fill(0);
     }
+    static u32 t_last = 0;
+    static u32 t_now;
+    t_now = millis();
+    (*dt) = (t_now - t_last) / 1000;
+    t_last = t_now;
     return imu_available;
 }
 
