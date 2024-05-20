@@ -2,6 +2,8 @@
 
 #include <Arduino_MKRGPS.h>
 #include <ICM_20948.h>
+#include "FilterTypes.h"
+#include "Helpers.h"
 
 #define i16 int16_t
 #define u16 uint16_t
@@ -14,62 +16,16 @@
 #define IMU_I2C_ADRESS 1
 typedef icm_20948_DMP_data_t DMPData;
 
-#define COMPONENT(name, start)   \
-struct                           \
-{                                \
-    f32 _pad[start];             \
-    union                        \
-    {                            \
-        BLA::Matrix<3> vec;      \
-        struct { f32 x, y, z; }; \
-    };                           \
-} name
-
-constexpr u32 STATE_SIZE = 6;
-constexpr u32 MEASUREMENT_SIZE = 10;
-
-typedef union
-{
-    BLA::Matrix<STATE_SIZE> vec;
-    union
-    {
-        BLA::Matrix<4> vec;
-        struct
-        {
-            f32 w, x, y, z;
-        };
-    } quat;
-    struct { f32 _pad[4]; f32 speed; f32 acceleration; };
-
-    // COMPONENT(acc, 5);
-    // COMPONENT(gyr, 9);
-    // COMPONENT(mag, 12);
-    // COMPONENT(acc_bias, 14);
-    // COMPONENT(gyr_bias, 17);
-    // COMPONENT(mag_bias, 20);
-} StateVector;
-
-typedef union
-{
-    BLA::Matrix<MEASUREMENT_SIZE> vec;
-    f32 speed;
-    COMPONENT(acc, 1);
-    COMPONENT(gyr, 4);
-    COMPONENT(mag, 7);
-} MeasurementVector;
-
-#undef COMPONENT
-
 ICM_20948_I2C IMU; // Create an ICM_20948_I2C object
 
 void InitGPS()
 {
     if (!GPS.begin(GPS_MODE_SHIELD)) {
-        Serial.println("Failed to initialize GPS!");
+        BasicPrint("\nFailed to initialize GPS!");
         // TODO(Nils): Should this be blocking?
         while (true);
     }
-    Serial.println("Initialized GPS successfully!");
+    BasicPrint("\nInitialized GPS successfully!");
 }
 
 void InitIMU()
@@ -85,10 +41,10 @@ void InitIMU()
         IMU.begin(Wire, IMU_I2C_ADRESS);
         if (IMU.status == ICM_20948_Stat_Ok)
         {
-            Serial.println("Initialized IMU successfully!");
+            BasicPrint("\nInitialized IMU successfully!");
             break;
         }
-        Serial.println("Failed to initialize IMU! Trying again...");
+        BasicPrint("\nFailed to initialize IMU! Trying again...");
         delay(500);
         continue;
     }
@@ -131,11 +87,11 @@ void InitDMP()
     // Check success
     if (success)
     {
-        Serial.println("Initialized DMP successfully!");
+        BasicPrint("\nInitialized DMP successfully!");
     } else
     {
-        Serial.println("Failed to initialize DMP!");
-        Serial.println("Please check that you have uncommented line 29 (#define ICM_20948_USE_DMP) in ICM_20948_C.h...");
+        BasicPrint("\nFailed to initialize DMP!");
+        BasicPrint("\nPlease check that you have uncommented line 29 (#define ICM_20948_USE_DMP) in ICM_20948_C.h...");
         while (true);
     }
 }
@@ -145,13 +101,13 @@ f32 ToAcceleration(const ICM_20948_I2C* const IMU, i16 axis_value)
   switch (IMU->agmt.fss.a)
   {
   case 0:
-    return ((float)axis_value) / 16384.0;
+    return ((float)axis_value) * 9.81 / 16384.0;
   case 1:
-    return ((float)axis_value) / 8192.0;
+    return ((float)axis_value) * 9.81 / 8192.0;
   case 2:
-    return ((float)axis_value) / 4096.0;
+    return ((float)axis_value) * 9.81 / 4096.0;
   case 3:
-    return ((float)axis_value) / 2048.0;
+    return ((float)axis_value) * 9.81 / 2048.0;
   default:
     return 0;
   }
@@ -162,13 +118,13 @@ f32 ToAngularVelocity(const ICM_20948_I2C* const IMU, i16 axis_value)
     switch (IMU->agmt.fss.g)
     {
         case 0:
-            return ((float)axis_value) * PI / (180 * 131);
+            return ((float)axis_value) * M_PI / (180 * 131);
         case 1:
-            return ((float)axis_value) * PI / (180 * 65.5);
+            return ((float)axis_value) * M_PI / (180 * 65.5);
         case 2:
-            return ((float)axis_value) * PI / (180 * 32.8);
+            return ((float)axis_value) * M_PI / (180 * 32.8);
         case 3:
-            return ((float)axis_value) * PI / (180 * 16.4);
+            return ((float)axis_value) * M_PI / (180 * 16.4);
         default:
             return 0;
     }
@@ -189,10 +145,11 @@ bool PollGPS(GPSClass* const gps)
 {
     const u32 start = millis();
     bool got_gps = false;
-    do
-    {
-        got_gps = gps->available();
-    } while (((millis() - start) < MAX_DELAY) || got_gps);
+    static f32 speed = gps->speed();
+    do { got_gps = gps->available(); }
+    while (((millis() - start) < MAX_DELAY) || got_gps);
+    got_gps = got_gps || (speed != gps->speed());
+    speed = gps->speed();
     return got_gps;
 }
 
@@ -202,7 +159,7 @@ bool ReadMeasurements(
     // TODO(Nils): No measurement available has be handled explicitly as a "NAN"
 {
     // gps
-    measurement->speed = PollGPS<100>(gps) ? ToMetersPerSecond(gps->speed()) : 0.0f;
+    measurement->speed =  PollGPS<100>(gps) ? ToMetersPerSecond(gps->speed()) : 0.0f;
     // IMU
     bool imu_available = imu->dataReady();
     if (imu_available)

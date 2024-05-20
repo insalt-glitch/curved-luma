@@ -6,6 +6,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include "LinearAlgebra.h"
+#include "FilterTypes.h"
 
 #define i16 int
 #define u16 unsigned int
@@ -20,6 +21,31 @@
 
 f32 sign(f32 x) { return (x > 0.0f) - (x < 0.0f); }
 
+template <typename T>
+T RadToDeg(const T& x) { return ((float)(180 / M_PI)) * x; }
+
+template <typename T>
+T DegToRad(const T& x) { return ((float)(M_PI / 180)) * x; }
+
+EulerAngles ToEulerAngles(const Quaternion& q) {
+    EulerAngles angles;
+
+    // roll (x-axis rotation)
+    const double sinr_cosp = 2 * (q.w * q.x + q.y * q.z);
+    const double cosr_cosp = 1 - 2 * (q.x * q.x + q.y * q.y);
+    angles.roll = std::atan2(sinr_cosp, cosr_cosp);
+    // pitch (y-axis rotation)
+    const double sinp = std::sqrt(1 + 2 * (q.w * q.y - q.x * q.z));
+    const double cosp = std::sqrt(1 - 2 * (q.w * q.y - q.x * q.z));
+    angles.pitch = 2 * std::atan2(sinp, cosp) - M_PI / 2;
+    // yaw (z-axis rotation)
+    const double siny_cosp = 2 * (q.w * q.z + q.x * q.y);
+    const double cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+    angles.yaw = std::atan2(siny_cosp, cosy_cosp);
+
+    return angles;
+}
+
 void PrintFormatted(const char* const fmt, ...)
 {
     static char buffer[256];
@@ -33,8 +59,18 @@ void PrintFormatted(const char* const fmt, ...)
     va_end (va);
 }
 
+template <typename T>
+using IsFloat = std::is_same<std::remove_const<std::remove_reference<T>>, float>;
+
+void PrintWrapper(const f32 value) {
+#ifdef PRINT_TO_SDCARD
+    if (SDCARD_ENABLED) sd_file.print(value, 6);
+#endif  // PRINT_TO_SDCARD
+    Serial.print(value, 6);
+}
+
 template<typename T>
-void PrintWrapper(T value) {
+typename std::enable_if<!IsFloat<T>::value>::type PrintWrapper(const T value) {
 #ifdef PRINT_TO_SDCARD
     if (SDCARD_ENABLED) sd_file.print(value);
 #endif  // PRINT_TO_SDCARD
@@ -54,6 +90,19 @@ void PrintMatrix(const BLA::MatrixBase<DerivedType, Rows, Cols, DType> &mat)
             PrintWrapper((j == Cols - 1) ? "]" : ",");
         }
         PrintWrapper((i == Rows - 1) ? "]" : ",");
+    }
+}
+
+template<typename DerivedType, int Rows, int Cols, typename DType, typename... Other>
+void PrintMatrixRaw(const BLA::MatrixBase<DerivedType, Rows, Cols, DType> &mat)
+{
+    for (u32 i = 0; i < Rows; i++)
+    {
+        for (u32 j = 0; j < Cols; j++)
+        {
+            PrintWrapper(mat(i,j));
+            if (!((i == Rows - 1) && (j == Cols - 1))) PrintWrapper(";");
+        }
     }
 }
 
@@ -121,7 +170,7 @@ void InitLogging(const u32 baud_rate)
 
 bool PrintGPSStatus(GPSClass* const gps)
 {
-    if (!gps->available()) return false;
+    // if (!gps->available()) return false;
     // read GPS values
     const f32 latitude   = gps->latitude();
     const f32 longitude  = gps->longitude();

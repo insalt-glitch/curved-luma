@@ -7,24 +7,24 @@
 #include "Helpers.h"
 #include "Sensors.h"
 
-const BLA::Matrix<STATE_SIZE, STATE_SIZE, float> cov_motion_noise =
+static const BLA::Matrix<STATE_SIZE, STATE_SIZE, float> cov_motion_noise =
 {
-    2.0f * PI / 180.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 2.0f * PI / 180.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 2.0f * PI / 180.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, 2.0f * PI / 180.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, 0.0f,               0.5f, 0.0f,
-    0.0f, 0.0f, 0.0f, 0.0f, 0.0f,               1.0f,
+    2.0f * M_PI / 180.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 2.0f * M_PI / 180.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 2.0f * M_PI / 180.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 2.0f * M_PI / 180.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f,                 0.5f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f, 0.0f,                 1.0f,
 };
-const BLA::Matrix<7, 7, float> cov_measurement_noise =
+static const BLA::Matrix<7, 7, float> cov_measurement_noise =
 {
     0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    0.0f, 5.69746e-3f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 5.0626e-3f, 0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 9.17358e-3f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f, 0.81258423f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.76833002f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.6285494f,
 };
 
 void InitializeFilter(
@@ -65,7 +65,7 @@ void motion_model(
     BLA::Matrix<STATE_SIZE, STATE_SIZE>* const f_jacobian)
 {
     // prepare matrix
-    BLA::Matrix<4, 4> scaled_Omega =
+    BLA::Matrix<4,4> scaled_Omega =
     {
               0, -y.gyr.x, -y.gyr.y, -y.gyr.z,
         y.gyr.x,        0,  y.gyr.z, -y.gyr.y,
@@ -77,7 +77,7 @@ void motion_model(
     if (f_x != nullptr)
     {
         // quaternion (update from https://ahrs.readthedocs.io/en/latest/filters/ekf.html#prediction-step)
-        f_x->quat.vec     = (BLA::Eye<4, 4>() + scaled_Omega) * prior.quat.vec;
+        f_x->quat.vec     = (BLA::Eye<4,4>() + scaled_Omega) * prior.quat.vec;
         // acceleration
         f_x->acceleration = prior.acceleration;
         // speed
@@ -85,7 +85,7 @@ void motion_model(
     }
     if (f_jacobian != nullptr)
     {
-        (*f_jacobian) = BLA::Eye<6, 6>();
+        (*f_jacobian) = BLA::Eye<STATE_SIZE, STATE_SIZE>();
         f_jacobian->Submatrix<4,4>(0,0) = f_jacobian->Submatrix<4,4>(0,0) + scaled_Omega;
         (*f_jacobian)(5,6) = dt;
     }
@@ -97,10 +97,10 @@ void measurement_model(
     BLA::Matrix<7, STATE_SIZE>* const h_jacobian)
 {
     // magnetic dip angle (https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#declination)
-    static constexpr f32 mag_theta = 4.83 * PI / 180.0;
+    static constexpr f32 mag_theta = 71.6 * M_PI / 180.0;
     static BLA::Matrix<3> r = {cos(mag_theta), 0, sin(mag_theta)};
     // g in NED-frame
-    static const BLA::Matrix<3,1,float> g = {0.0f, 0.0f, -9.81f};
+    static const BLA::Matrix<3,1,float> g = {0.0f, 0.0f, -1.0f};
     // compute h(x) and jacobian
     if (h_x != nullptr)
     {
@@ -147,4 +147,16 @@ void measurement_model(
         };
         h_jacobian->Submatrix<6, 4>(1,0) = 2.0f * ((u_g || G) && (u_r || R));
     }
+}
+
+void ExtractPartialMeasurement(
+    const MeasurementVector& measurement,
+    BLA::Matrix<7,1>* const partial_m)
+{
+    (*partial_m)(0,0) = measurement.speed;
+    // normalize acceleration and magnetometer readings
+    partial_m->Submatrix<3,1>(1,0) =
+        measurement.acc.vec / BLA::Norm(measurement.acc.vec);
+    partial_m->Submatrix<3,1>(4,0) =
+        measurement.mag.vec / BLA::Norm(measurement.mag.vec);
 }

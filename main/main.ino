@@ -18,9 +18,11 @@
 #include "Helpers.h"
 #include "Sensors.h"
 #include "EKF_Kalman_Filter.h"
+#include "FilterTypes.h"
 #include "FilterImplementation.h"
 
 MeasurementVector measurement;
+BLA::Matrix<7,1> partial_measurement;
 StateVector mu_prediction, mu_update;
 BLA::Matrix<STATE_SIZE, STATE_SIZE> cov_prediction, cov_update;
 f32 dt, t_last, t_now;
@@ -32,11 +34,16 @@ void setup()
     InitGPS();
     InitIMU();
     InitializeFilter(&IMU, &GPS, &mu_update, &cov_update);
+    BasicPrint("\nQuat: ", mu_update.quat.vec);
+    BasicPrint("  |  ", BLA::Norm(mu_update.quat.vec));
 }
 
 void loop()
 {
     if (ReadMeasurements(&IMU, &GPS, &measurement, &dt)) {
+        // PrintGPSStatus(&GPS);
+        // PrintMatrixRaw(measurement.vec);
+        // BasicPrint("\n");
         // BasicPrint("\n\nLinear  Acceleration (m/s)  : ", measurement.acc.vec);
         // BasicPrint("\nAngular Acceleration (rad/s): ", measurement.gyr.vec);
         // BasicPrint("\nMagnetic field       (muT)  : ", measurement.mag.vec);
@@ -44,21 +51,19 @@ void loop()
 
         Kalman::PredictionStepEKF(
             mu_update, cov_update, measurement, cov_motion_noise, dt,
-            &motion_model, &mu_prediction, &cov_prediction
-        );
-        BLA::Matrix<7,1> partial_measurement;
-        partial_measurement(0,0) = measurement.speed;
-        partial_measurement.Submatrix<3,1>(1,0) = measurement.acc.vec;
-        partial_measurement.Submatrix<3,1>(4,0) = measurement.gyr.vec;
+            &motion_model, &mu_prediction, &cov_prediction);
+        ExtractPartialMeasurement(measurement, &partial_measurement);
         Kalman::UpdateStepEKF(
             mu_prediction, cov_prediction, partial_measurement, cov_measurement_noise,
-            &measurement_model, &mu_update, &cov_update
-        );
+            &measurement_model, &mu_update, &cov_update);
         // Normailze quaterion
-        mu_update.quat.vec /= BLA::Norm(mu_update.quat.vec);
-        BasicPrint("\n\nQuaternion: ", mu_update.quat.vec);
-        BasicPrint("\nVelocity: ", mu_update.speed);
-        BasicPrint("\nAcceleration: ", mu_update.acceleration);
+        mu_update.quat.vec /= BLA::Norm(mu_update.quat.vec) * sign(mu_update.quat.w);
+
+        // printing
+        const EulerAngles e_angles = ToEulerAngles(mu_update.quat);
+        BasicPrint("\nQuat: ", mu_update.quat.vec);
+        BasicPrint("  |  ", BLA::Norm(mu_update.quat.vec));
+        BasicPrint("  |  ", RadToDeg(e_angles.vec));
         PrintFlush();
     }
 }
