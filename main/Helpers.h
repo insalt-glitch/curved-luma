@@ -19,13 +19,15 @@
     bool SDCARD_ENABLED = false;
 #endif
 
-f32 sign(f32 x) { return (x > 0.0f) - (x < 0.0f); }
+static constexpr f32 sign(const f32 x) { return (x > 0.0f) - (x < 0.0f); }
+
+static constexpr f32 ClampZero(const f32 x) { return (x < 0.0f) ? 0.0f : x; }
 
 template <typename T>
-T RadToDeg(const T& x) { return ((float)(180 / M_PI)) * x; }
+static constexpr T RadToDeg(const T& x) { return ((float)(180 / M_PI)) * x; }
 
 template <typename T>
-T DegToRad(const T& x) { return ((float)(M_PI / 180)) * x; }
+static constexpr T DegToRad(const T& x) { return ((float)(M_PI / 180)) * x; }
 
 EulerAngles ToEulerAngles(const Quaternion& q) {
     EulerAngles angles;
@@ -136,6 +138,15 @@ void PrintFlush()
     sd_file.flush();
 #endif  // PRINT_TO_SDCARD
     Serial.flush();
+}
+
+void Assert(const bool condition, const char* const message = nullptr)
+{
+    if (!condition)
+    {
+        if (message != nullptr) PrintWrapper(message);
+        while (true);
+    }
 }
 
 void InitLogging(const u32 baud_rate)

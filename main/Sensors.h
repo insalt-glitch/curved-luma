@@ -20,11 +20,8 @@ ICM_20948_I2C IMU; // Create an ICM_20948_I2C object
 
 void InitGPS()
 {
-    if (!GPS.begin(GPS_MODE_SHIELD)) {
-        BasicPrint("\nFailed to initialize GPS!");
-        // TODO(Nils): Should this be blocking?
-        while (true);
-    }
+    // TODO(Nils): Should this be blocking?
+    Assert(GPS.begin(GPS_MODE_SHIELD), "\nFailed to initialize GPS!");
     BasicPrint("\nInitialized GPS successfully!");
 }
 
@@ -33,21 +30,19 @@ void InitIMU()
     Wire.begin();
     Wire.setClock(400000);
 
-    while (true)
+    static constexpr u32 max_retry_time = 10000;
+    const u32 start_time = millis();
+    do
     {
         // Initialize the IMU (ICM-20948)
         // If the DMP is enabled, .begin performs a minimal startup.
         // We need to configure the sample mode etc. manually.
         IMU.begin(Wire, IMU_I2C_ADRESS);
-        if (IMU.status == ICM_20948_Stat_Ok)
-        {
-            BasicPrint("\nInitialized IMU successfully!");
-            break;
-        }
-        BasicPrint("\nFailed to initialize IMU! Trying again...");
-        delay(500);
-        continue;
-    }
+        if (IMU.status == ICM_20948_Stat_Ok) break;
+        delay(200);
+    } while ((millis() - start_time) < max_retry_time);
+    Assert(IMU.status == ICM_20948_Stat_Ok, "\nFailed to initialize IMU!");
+    BasicPrint("\nInitialized IMU successfully!");
 }
 
 void InitDMP()

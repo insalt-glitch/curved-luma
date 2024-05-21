@@ -20,6 +20,7 @@
 #include "EKF_Kalman_Filter.h"
 #include "FilterTypes.h"
 #include "FilterImplementation.h"
+#include "LedControl.h"
 
 MeasurementVector measurement;
 BLA::Matrix<7,1> partial_measurement;
@@ -33,6 +34,7 @@ void setup()
     // initialize GPS, IMU and DMP
     InitGPS();
     InitIMU();
+    LED::InitMatrix();
     InitializeFilter(&IMU, &GPS, &mu_update, &cov_update);
     BasicPrint("\nQuat: ", mu_update.quat.vec);
     BasicPrint("  |  ", BLA::Norm(mu_update.quat.vec));
@@ -41,7 +43,6 @@ void setup()
 void loop()
 {
     if (ReadMeasurements(&IMU, &GPS, &measurement, &dt)) {
-        // PrintGPSStatus(&GPS);
         // PrintMatrixRaw(measurement.vec);
         // BasicPrint("\n");
         // BasicPrint("\n\nLinear  Acceleration (m/s)  : ", measurement.acc.vec);
@@ -58,9 +59,10 @@ void loop()
             &measurement_model, &mu_update, &cov_update);
         // Normailze quaterion
         mu_update.quat.vec /= BLA::Norm(mu_update.quat.vec) * sign(mu_update.quat.w);
-
-        // printing
         const EulerAngles e_angles = ToEulerAngles(mu_update.quat);
+        constexpr f32 assumed_velocity = 12.0f;
+        LED::UpdateMatrix(assumed_velocity, e_angles.pitch);
+        // printing
         BasicPrint("\nQuat: ", mu_update.quat.vec);
         BasicPrint("  |  ", BLA::Norm(mu_update.quat.vec));
         BasicPrint("  |  ", RadToDeg(e_angles.vec));
