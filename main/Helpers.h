@@ -21,7 +21,12 @@
 
 static constexpr f32 sign(const f32 x) { return (x > 0.0f) - (x < 0.0f); }
 
-static constexpr f32 ClampZero(const f32 x) { return (x < 0.0f) ? 0.0f : x; }
+static f32 Clamp(const f32 x, const f32 a, const f32 b)
+{
+    if (x < a) return a;
+    if (x > b) return b;
+    return x;
+}
 
 template <typename T>
 static constexpr T RadToDeg(const T& x) { return ((float)(180 / M_PI)) * x; }
@@ -57,7 +62,7 @@ void PrintFormatted(const char* const fmt, ...)
 #ifdef PRINT_TO_SDCARD
     if (SDCARD_ENABLED) sd_file.print(buffer);
 #endif  // PRINT_TO_SDCARD
-    Serial.print(buffer);
+    // Serial.print(buffer);
     va_end (va);
 }
 
@@ -68,7 +73,7 @@ void PrintWrapper(const f32 value) {
 #ifdef PRINT_TO_SDCARD
     if (SDCARD_ENABLED) sd_file.print(value, 6);
 #endif  // PRINT_TO_SDCARD
-    Serial.print(value, 6);
+    // Serial.print(value, 6);
 }
 
 template<typename T>
@@ -76,7 +81,7 @@ typename std::enable_if<!IsFloat<T>::value>::type PrintWrapper(const T value) {
 #ifdef PRINT_TO_SDCARD
     if (SDCARD_ENABLED) sd_file.print(value);
 #endif  // PRINT_TO_SDCARD
-    Serial.print(value);
+    // Serial.print(value);
 }
 
 template<typename DerivedType, int Rows, int Cols, typename DType>
@@ -137,14 +142,18 @@ void PrintFlush()
 #ifdef PRINT_TO_SDCARD
     sd_file.flush();
 #endif  // PRINT_TO_SDCARD
-    Serial.flush();
+    // Serial.flush();
 }
 
 void Assert(const bool condition, const char* const message = nullptr)
 {
     if (!condition)
     {
-        if (message != nullptr) PrintWrapper(message);
+        if (message != nullptr)
+        {
+            PrintWrapper(message);
+            PrintFlush();
+        }
         while (true);
     }
 }
@@ -152,9 +161,9 @@ void Assert(const bool condition, const char* const message = nullptr)
 void InitLogging(const u32 baud_rate)
 {
     // initialize serial communications and wait for port to open:
-    Serial.begin(baud_rate);
+    // Serial.begin(baud_rate);
     // wait for serial port to connect. Needed for native USB port only
-    while (!Serial);
+    // while (!Serial);
 #ifdef PRINT_TO_SDCARD
     if (!SD.begin())
     {
@@ -219,5 +228,37 @@ void printStatusInterval(GPSClass* const gps)
         lastRefreshTime = millis();
         // Check if there is new GPS data available
         PrintGPSStatus(gps);
+    }
+}
+
+void BlinkTest()
+{
+    pinMode(6, OUTPUT);
+    pinMode(7, OUTPUT);
+    pinMode(15, INPUT);
+
+    digitalWrite(6, LOW);
+    digitalWrite(7, HIGH);
+    bool led1State = false;
+    bool led2State = true;
+
+    while (true)
+    {
+        for (u32 i = 0; i < 4; i++)
+        {
+            for (u32 j = 0; j < 6; j++)
+            {
+
+                digitalWrite(j    , HIGH);
+                digitalWrite(i+ 17, HIGH);
+                digitalWrite(6, led1State);
+                digitalWrite(7, led2State);
+                led1State = !led1State;
+                led2State = !led2State;
+                delay(200);
+                digitalWrite(j    , LOW);
+                digitalWrite(i+ 17, LOW);
+            }
+        }
     }
 }

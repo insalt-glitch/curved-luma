@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+#include <ArduinoLowPower.h>
 #include <Arduino_MKRGPS.h>
 #include "ICM_20948.h"
 #include "LinearAlgebra.h"
@@ -28,13 +29,38 @@ StateVector mu_prediction, mu_update;
 BLA::Matrix<STATE_SIZE, STATE_SIZE> cov_prediction, cov_update;
 f32 dt, t_last, t_now;
 
+constexpr u32 PIN_POWERED_LED = 7;
+constexpr u32 PIN_GPS_LED =6;
+constexpr u32 PIN_BUTTON = 8;
+
+void EnableDeepSleep()
+{
+    digitalWrite(PIN_POWERED_LED, LOW);
+    digitalWrite(PIN_GPS_LED, LOW);
+    LED::PowerOff();
+    // wait for the button to be released
+    while (digitalRead(PIN_BUTTON) == HIGH) { delay(10); }
+    attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), WakeupFromDeepSleep, HIGH);
+    LowPower.deepSleep();
+    detachInterrupt(digitalPinToInterrupt(PIN_BUTTON));
+    digitalWrite(PIN_POWERED_LED, HIGH);
+}
+
+void WakeupFromDeepSleep() {}
+
 void setup()
 {
     InitLogging(SERIAL_BAUD_RATE);
-    // initialize GPS, IMU and DMP
+    // initialize GPS, IMU and LEDs
     InitGPS();
     InitIMU();
     LED::InitMatrix();
+    pinMode(PIN_POWERED_LED, OUTPUT);
+    pinMode(PIN_GPS_LED, OUTPUT);
+    pinMode(PIN_BUTTON, INPUT_PULLUP);
+    digitalWrite(PIN_POWERED_LED, HIGH);
+    digitalWrite(PIN_GPS_LED, LOW);
+    // initialize Kalman filter
     InitializeFilter(&IMU, &GPS, &mu_update, &cov_update);
     BasicPrint("\nQuat: ", mu_update.quat.vec);
     BasicPrint("  |  ", BLA::Norm(mu_update.quat.vec));
@@ -43,8 +69,6 @@ void setup()
 void loop()
 {
     if (ReadMeasurements(&IMU, &GPS, &measurement, &dt)) {
-        // PrintMatrixRaw(measurement.vec);
-        // BasicPrint("\n");
         // BasicPrint("\n\nLinear  Acceleration (m/s)  : ", measurement.acc.vec);
         // BasicPrint("\nAngular Acceleration (rad/s): ", measurement.gyr.vec);
         // BasicPrint("\nMagnetic field       (muT)  : ", measurement.mag.vec);
@@ -60,12 +84,11 @@ void loop()
         // Normailze quaterion
         mu_update.quat.vec /= BLA::Norm(mu_update.quat.vec) * sign(mu_update.quat.w);
         const EulerAngles e_angles = ToEulerAngles(mu_update.quat);
-        constexpr f32 assumed_velocity = 12.0f;
+        constexpr f32 assumed_velocity = 10.0f / 3.6f;
         LED::UpdateMatrix(assumed_velocity, e_angles.pitch);
         // printing
-        BasicPrint("\nQuat: ", mu_update.quat.vec);
-        BasicPrint("  |  ", BLA::Norm(mu_update.quat.vec));
-        BasicPrint("  |  ", RadToDeg(e_angles.vec));
+        BasicPrint("EulerAngles: ", RadToDeg(e_angles.vec));
         PrintFlush();
     }
+    if (digitalRead(PIN_BUTTON) == HIGH) EnableDeepSleep();
 }
